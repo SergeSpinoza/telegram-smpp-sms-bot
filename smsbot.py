@@ -7,7 +7,12 @@ import yaml
 
 sys.path.insert(1, './lib')
 import smpplib
-from urllib3.contrib.socks import SOCKSProxyManager
+# from urllib3.contrib.socks import SOCKSProxyManager
+
+# import smpplib.gsm
+# import smpplib.client
+# import smpplib.consts
+
 
 with open("settings.yaml", 'r') as ymlfile:
    cfg = yaml.safe_load(ymlfile)
@@ -16,10 +21,10 @@ with open("settings.yaml", 'r') as ymlfile:
 logging.basicConfig(level=cfg['log_level'])
 
 # Bot var
-bot_token = cfg['telegram']['bot_token']
-channel_id = cfg['telegram']['channel_id']
-# urllib3.contrib.pyopenssl.inject_into_urllib3()
-proxy = SOCKSProxyManager(cfg['telegram']['proxy_host'], username=cfg['telegram']['proxy_login'], password=cfg['telegram']['proxy_pass'])
+# bot_token = cfg['telegram']['bot_token']
+# channel_id = cfg['telegram']['channel_id']
+# # urllib3.contrib.pyopenssl.inject_into_urllib3()
+# proxy = SOCKSProxyManager(cfg['telegram']['proxy_host'], username=cfg['telegram']['proxy_login'], password=cfg['telegram']['proxy_pass'])
 
 
 # Two parts, UCS2, SMS with UDH

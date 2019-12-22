@@ -2,4 +2,5 @@
 .vscode
 settings.yaml
 venv
+lib/smpplib/__pycache__
 
