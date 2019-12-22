@@ -1,0 +1,11 @@
+version: '3.3'
+services:
+
+  smsbot:
+    build: ./
+    image: smsbot
+    container_name: smsbot
+    volumes:
+      - ./settings.yaml:/app/settings.yaml
+    restart: always
+
