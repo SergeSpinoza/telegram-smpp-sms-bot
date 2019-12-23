@@ -30,6 +30,8 @@ import struct
 
 from smpplib import consts, exceptions, smpp
 
+logger = logging.getLogger('smpplib.client')
+
 
 class SimpleSequenceGenerator(object):
 
@@ -62,12 +64,11 @@ class Client(object):
     _socket = None
     sequence_generator = None
 
-    def __init__(self, host, port, timeout=5, sequence_generator=None, logger_name=None):
+    def __init__(self, host, port, timeout=5, sequence_generator=None):
         self.host = host
         self.port = int(port)
         self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.timeout = timeout
-        self.logger = logging.getLogger(logger_name or 'smpp.Client.{}'.format(id(self)))
+        self._socket.settimeout(timeout)
         if sequence_generator is None:
             sequence_generator = SimpleSequenceGenerator()
         self.sequence_generator = sequence_generator
@@ -81,14 +82,14 @@ class Client(object):
                 self.unbind()
             except (exceptions.PDUError, exceptions.ConnectionError) as e:
                 if len(getattr(e, 'args', tuple())) > 1:
-                    self.logger.warning('(%d) %s. Ignored', e.args[1], e.args[0])
+                    logger.warning('(%d) %s. Ignored', e.args[1], e.args[0])
                 else:
-                    self.logger.warning('%s. Ignored', e)
+                    logger.warning('%s. Ignored', e)
             self.disconnect()
 
     def __del__(self):
         if self._socket is not None:
-            self.logger.warning('%s was not closed', self)
+            logger.warning('%s was not closed', self)
 
     @property
     def sequence(self):
@@ -100,12 +101,11 @@ class Client(object):
     def connect(self):
         """Connect to SMSC"""
 
-        self.logger.info('Connecting to %s:%s...', self.host, self.port)
+        logger.info('Connecting to %s:%s...', self.host, self.port)
 
         try:
             if self._socket is None:
                 self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                self._socket.settimeout(self.timeout)
             self._socket.connect((self.host, self.port))
             self.state = consts.SMPP_CLIENT_STATE_OPEN
         except socket.error:
@@ -113,10 +113,10 @@ class Client(object):
 
     def disconnect(self):
         """Disconnect from the SMSC"""
-        self.logger.info('Disconnecting...')
+        logger.info('Disconnecting...')
 
         if self.state != consts.SMPP_CLIENT_STATE_OPEN:
-            self.logger.warning('%s is disconnecting in the bound state', self)
+            logger.warning('%s is disconnecting in the bound state', self)
         if self._socket is not None:
             self._socket.close()
             self._socket = None
@@ -126,7 +126,7 @@ class Client(object):
         """Send bind_transmitter command to the SMSC"""
 
         if command_name in ('bind_receiver', 'bind_transceiver'):
-            self.logger.debug('Receiver mode')
+            logger.debug('Receiver mode')
 
         p = smpp.make_pdu(command_name, client=self, **kwargs)
 
@@ -176,11 +176,11 @@ class Client(object):
                 consts.DESCRIPTIONS[consts.SMPP_ESME_RINVBNDSTS],
             ))
 
-        self.logger.debug('Sending %s PDU', p.command)
+        logger.debug('Sending %s PDU', p.command)
 
         generated = p.generate()
 
-        self.logger.debug('>>%s (%d bytes)', binascii.b2a_hex(generated), len(generated))
+        logger.debug('>>%s (%d bytes)', binascii.b2a_hex(generated), len(generated))
 
         sent = 0
 
@@ -188,7 +188,7 @@ class Client(object):
             try:
                 sent_last = self._socket.send(generated[sent:])
             except socket.error as e:
-                self.logger.warning(e)
+                logger.warning(e)
                 raise exceptions.ConnectionError()
             if sent_last == 0:
                 raise exceptions.ConnectionError()
@@ -199,14 +199,14 @@ class Client(object):
     def read_pdu(self):
         """Read PDU from the SMSC"""
 
-        self.logger.debug('Waiting for PDU...')
+        logger.debug('Waiting for PDU...')
 
         try:
             raw_len = self._socket.recv(4)
         except socket.timeout:
             raise
         except socket.error as e:
-            self.logger.warning(e)
+            logger.warning(e)
             raise exceptions.ConnectionError()
         if not raw_len:
             raise exceptions.ConnectionError()
@@ -214,18 +214,17 @@ class Client(object):
         try:
             length = struct.unpack('>L', raw_len)[0]
         except struct.error:
-            self.logger.warning('Receive broken pdu... %s', repr(raw_len))
+            logger.warning('Receive broken pdu... %s', repr(raw_len))
             raise exceptions.PDUError('Broken PDU')
 
-        raw_pdu = raw_len
-        while len(raw_pdu) < length:
-            raw_pdu += self._socket.recv(length - len(raw_pdu))
+        raw_pdu = self._socket.recv(length - 4)
+        raw_pdu = raw_len + raw_pdu
 
-        self.logger.debug('<<%s (%d bytes)', binascii.b2a_hex(raw_pdu), len(raw_pdu))
+        logger.debug('<<%s (%d bytes)', binascii.b2a_hex(raw_pdu), len(raw_pdu))
 
         pdu = smpp.parse_pdu(raw_pdu, client=self)
 
-        self.logger.debug('Read %s PDU', pdu.command)
+        logger.debug('Read %s PDU', pdu.command)
 
         if pdu.is_error():
             return pdu
@@ -248,11 +247,11 @@ class Client(object):
         dsmr.sequence = pdu.sequence
         self.send_pdu(dsmr)
 
-    def _enquire_link_received(self, pdu):
+    def _enquire_link_received(self):
         """Response to enquire_link"""
         ler = smpp.make_pdu('enquire_link_resp', client=self)
-        ler.sequence = pdu.sequence
         self.send_pdu(ler)
+        logger.debug("Link Enquiry...")
 
     def _alert_notification(self, pdu):
         """Handler for alert notification event"""
@@ -265,35 +264,28 @@ class Client(object):
     def set_message_sent_handler(self, func):
         """Set new function to handle message sent event"""
         self.message_sent_handler = func
-        
-    def set_query_resp_handler(self, func):
-        """Set new function to handle query resp event"""
-        self.query_resp_handler = func
 
-    def message_received_handler(self, pdu, **kwargs):
+    @staticmethod
+    def message_received_handler(pdu, **kwargs):
         """Custom handler to process received message. May be overridden"""
-        self.logger.warning('Message received handler (Override me)')
 
-    def message_sent_handler(self, pdu, **kwargs):
+        logger.warning('Message received handler (Override me)')
+
+    @staticmethod
+    def message_sent_handler(pdu, **kwargs):
         """
         Called when SMPP server accept message (SUBMIT_SM_RESP).
         May be overridden
         """
-        self.logger.warning('Message sent handler (Override me)')
+        logger.warning('Message sent handler (Override me)')
 
-    def query_resp_handler(self, pdu, **kwargs):
-        """Custom handler to process response to queries. May be overridden"""
-        self.logger.warning('Query resp handler (Override me)')
-
-    def read_once(self, ignore_error_codes=None, auto_send_enquire_link=True):
+    def read_once(self, ignore_error_codes=None):
         """Read a PDU and act"""
         try:
             try:
                 pdu = self.read_pdu()
             except socket.timeout:
-                if not auto_send_enquire_link:
-                    raise
-                self.logger.debug('Socket timeout, listening again')
+                logger.debug('Socket timeout, listening again')
                 pdu = smpp.make_pdu('enquire_link', client=self)
                 self.send_pdu(pdu)
                 return
@@ -307,40 +299,38 @@ class Client(object):
                 )
 
             if pdu.command == 'unbind':  # unbind_res
-                self.logger.info('Unbind command received')
+                logger.info('Unbind command received')
                 return
             elif pdu.command == 'submit_sm_resp':
                 self.message_sent_handler(pdu=pdu)
             elif pdu.command == 'deliver_sm':
                 self._message_received(pdu)
-            elif pdu.command == 'query_sm_resp':
-                self.query_resp_handler(pdu)
             elif pdu.command == 'enquire_link':
-                self._enquire_link_received(pdu)
+                self._enquire_link_received()
             elif pdu.command == 'enquire_link_resp':
                 pass
             elif pdu.command == 'alert_notification':
                 self._alert_notification(pdu)
             else:
-                self.logger.warning('Unhandled SMPP command "%s"', pdu.command)
+                logger.warning('Unhandled SMPP command "%s"', pdu.command)
         except exceptions.PDUError as e:
             if ignore_error_codes and len(e.args) > 1 and e.args[1] in ignore_error_codes:
-                self.logger.warning('(%d) %s. Ignored.', e.args[1], e.args[0])
+                logging.warning('(%d) %s. Ignored.', e.args[1], e.args[0])
             else:
                 raise
 
-    def poll(self, ignore_error_codes=None, auto_send_enquire_link=True):
+    def poll(self, ignore_error_codes=None):
         """Act on available PDUs and return"""
         while True:
-            readable, _writable, _exceptional = select.select([self._socket], [], [], 0)
+            readable, writable, exceptional = select.select([self._socket], [], [], 0)
             if not readable:
                 break
-            self.read_once(ignore_error_codes, auto_send_enquire_link)
+            self.read_once(ignore_error_codes)
 
-    def listen(self, ignore_error_codes=None, auto_send_enquire_link=True):
+    def listen(self, ignore_error_codes=None):
         """Listen for PDUs and act"""
         while True:
-            self.read_once(ignore_error_codes, auto_send_enquire_link)
+            self.read_once(ignore_error_codes)
 
     def send_message(self, **kwargs):
         """Send message
@@ -356,17 +346,3 @@ class Client(object):
         ssm = smpp.make_pdu('submit_sm', client=self, **kwargs)
         self.send_pdu(ssm)
         return ssm
-
-    def query_message(self, **kwargs):
-        """Query message state
-
-        Required Arguments:
-            message_id -- SMSC assigned Message ID
-            source_addr_ton -- Original source address TON
-            source_addr_npi -- Original source address NPI
-            source_addr -- Original source address (string)
-        """
-
-        qsm = smpp.make_pdu('query_sm', client=self, **kwargs)
-        self.send_pdu(qsm)
-        return qsm

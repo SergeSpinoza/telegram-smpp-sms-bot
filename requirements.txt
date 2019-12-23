@@ -2,3 +2,4 @@ PyYAML>=5.2
 PySocks>=1.7.1
 urllib3>=1.25.7
 six>=1.13.0
+
