@@ -20,10 +20,11 @@ To use this function you need:
 
 | **Top level settings** | **Sub-level settings** | **Discription**                                   | **Example**                                       |
 |--------------------|--------------------|-----------------------------------------------|-----------------------------------------------|
-| log_level          |                    | Log level                                     | DEBUG                                         |
+| log_level          |                    | Log level (it's may be: NOTSET, DEBUG, INFO, WARNING, ERROR, CRITICAL)                                    | DEBUG                                         |
 | telegram           |                    |                                               |                                               |
 |                    | bot_token          | Telegram bot token                            | '00000000000:xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' |
 |                    | channel_id         | Telegram channel id                           | '-10000000000000'                             |
+|                    | proxy_enabled         | `True` for enable use socks5 proxy to connect telegram api                            | False                             |
 |                    | proxy_host         | Socks5 proxy host for telegram connection     | 'socks5://SOCKS5_IP_ADDR:1881'                |
 |                    | proxy_login        | Socks5 login                                  | 'SOCKS_LOGIN'                                 |
 |                    | proxy_pass         | Socks5 password                               | 'SOCKS_PASSWD'                                |

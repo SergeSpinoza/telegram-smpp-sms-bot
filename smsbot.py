@@ -4,17 +4,17 @@ import re
 import logging
 import sys
 import yaml
+import urllib3
+from urllib3.contrib.socks import SOCKSProxyManager
 
 sys.path.append('./lib')
 import smpplib
-
-from urllib3.contrib.socks import SOCKSProxyManager
 
 # import smpplib.gsm
 # import smpplib.client
 # import smpplib.consts
 
-# Load config 
+# Load config
 with open("settings.yaml", 'r') as ymlfile:
    cfg = yaml.safe_load(ymlfile)
 
@@ -25,7 +25,10 @@ logging.basicConfig(level=cfg['log_level'])
 bot_token = cfg['telegram']['bot_token']
 channel_id = cfg['telegram']['channel_id']
 # urllib3.contrib.pyopenssl.inject_into_urllib3()
-proxy = SOCKSProxyManager(cfg['telegram']['proxy_host'], username=cfg['telegram']['proxy_login'], password=cfg['telegram']['proxy_pass'])
+if cfg['telegram']['proxy_enabled']:
+   proxy = SOCKSProxyManager(cfg['telegram']['proxy_host'], username=cfg['telegram']['proxy_login'], password=cfg['telegram']['proxy_pass'])
+else:
+   proxy = urllib3.PoolManager()
 
 
 # Two parts, UCS2, SMS with UDH
@@ -35,22 +38,19 @@ client = smpplib.client.Client(cfg['smpp_goip']['host'], cfg['smpp_goip']['port'
 sms_destination_num = cfg['smpp_goip']['sim_num']
 
 def getPdu(pdu):
-   pdu.short_message
    russian_symbols_count = len(re.findall('[а-яё]', pdu.short_message.decode('utf-16be', errors='ignore'), re.I))
    if russian_symbols_count > 0:
       # print(pdu.short_message.decode('utf-16be', errors='ignore'))
       sms = pdu.short_message.decode('utf-16be', errors='ignore')
       source_addr = pdu.source_addr.decode()
       msg = "SMS to (%s) from (%s): %s" % (sms_destination_num, source_addr, sms)
-      proxy.request('POST', "https://api.telegram.org/bot" + bot_token + "/sendMessage",
-                    fields={"chat_id": channel_id, "text": msg, "disable_web_page_preview": "true"}).read()
    else:
       # print(pdu.short_message.decode())
       sms = pdu.short_message.decode()
       source_addr = pdu.source_addr.decode()
       msg = "SMS to (%s) from (%s): %s" % (sms_destination_num, source_addr, sms)
-      proxy.request('POST', "https://api.telegram.org/bot" + bot_token + "/sendMessage",
-                    fields={"chat_id": channel_id, "text": msg, "disable_web_page_preview": "true"}).read()
+   proxy.request('POST', "https://api.telegram.org/bot" + bot_token + "/sendMessage",
+                 fields={"chat_id": channel_id, "text": msg, "disable_web_page_preview": "true"}).read()
 
 client.set_message_received_handler(getPdu)
 

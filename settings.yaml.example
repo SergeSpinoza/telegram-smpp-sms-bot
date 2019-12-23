@@ -4,6 +4,7 @@ log_level: 'DEBUG'
 telegram:
   bot_token: '00000000000:xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
   channel_id: '-10000000000000'
+  proxy_enabled: True
   proxy_host: 'socks5://SOCKS5_IP_ADDR:1881'
   proxy_login: 'SOCKS_LOGIN'
   proxy_pass: 'SOCKS_PASSWD'
