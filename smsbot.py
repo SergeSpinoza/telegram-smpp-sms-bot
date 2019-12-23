@@ -42,13 +42,11 @@ def getPdu(pdu):
    if russian_symbols_count > 0:
       # print(pdu.short_message.decode('utf-16be', errors='ignore'))
       sms = pdu.short_message.decode('utf-16be', errors='ignore')
-      source_addr = pdu.source_addr.decode()
-      msg = "SMS to (%s) from (%s): %s" % (sms_destination_num, source_addr, sms)
    else:
       # print(pdu.short_message.decode())
       sms = pdu.short_message.decode()
-      source_addr = pdu.source_addr.decode()
-      msg = "SMS to (%s) from (%s): %s" % (sms_destination_num, source_addr, sms)
+   source_addr = pdu.source_addr.decode()
+   msg = "SMS to (%s) from (%s): %s" % (sms_destination_num, source_addr, sms)
    proxy.request('POST', "https://api.telegram.org/bot" + bot_token + "/sendMessage",
                  fields={"chat_id": channel_id, "text": msg, "disable_web_page_preview": "true"}).read()
 
